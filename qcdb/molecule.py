@@ -1276,7 +1276,61 @@ class Molecule(LibmintsMolecule):
         U[2,2] = q[0]**2 - q[1]**2 - q[2]**2 + q[3]**2
 
         return U
+
+    def get_nmers(self, N):
+        """ Returns a dictionary of lists that contain Molecule objects for
+            all unique n-mers from n=1-N. Key values correspond to the value of 
+            n.
+
+        >>> H2O_20.get_nmers(1)
+        {1: [<qcdb.molecule.Molecule object at 0x7f3a66929f10>, <qcdb.molecule.Molecule object at 0x7f3a66929ed0>]}
+        """
+
+        from itertools import combinations
         
+        mols = self.auto_fragments()
+        
+        nfrags = mols.nfragments()
+        if N > nfrags: 
+            raise Exception("BFS only found %d fragments. Cannot find %d-mer with %d fragments." % (nfrags,N,nfrags)) 
+
+        inds = [x for x in range(nfrags)]
+        
+        #dictionary with lists for each class of n-mer
+        unique = {}
+        for i in range(N): unique[i+1] = []
+
+        #for each type of n-mer
+        for i in range(N):
+            #add each unique n-mer
+            nres = {}
+            for combo in combinations(inds,i+1):
+                mol = mols.extract_subsets(list(combo))
+                nre = mol.nuclear_repulsion_energy()
+                #tweak to whatever tightness we'd likee
+                nre = round(nre,2)                    
+                try: nres[nre].append(mol)
+                except: nres[nre] = [mol]
+            for nre in nres.keys():
+                lnre = len(nres[nre])
+                #last element not checked for duplication 
+                unique[i+1].append(nres[nre][-1])
+                #nothing to compare too if only one 
+                if lnre == 1: continue
+                for m1 in range(lnre-1):
+                    duplicate = False
+                    for m2 in range(m1+1,lnre):
+                        mol1 = nres[nre][m1] 
+                        mol2 = nres[nre][m2]
+                        rmsd = mol1.align_molecules(mol2) 
+                        #make keyword for this option
+                        if rmsd < 0.01: 
+                            duplicate = True
+                            break
+                    if not duplicate: unique[i+1].append(mol1)
+        return unique 
+                    
+
 
 # Attach methods to qcdb.Molecule class
 from .interface_dftd3 import run_dftd3 as _dftd3_qcdb_yo
